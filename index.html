@@ -1,1 +1,961 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Battle Island 3D</title>
 
+<style>
+*{
+  margin:0;
+  padding:0;
+  box-sizing:border-box;
+  user-select:none;
+}
+
+body{
+  overflow:hidden;
+  background:#000;
+  font-family:Arial,sans-serif;
+}
+
+#game{
+  width:100vw;
+  height:100vh;
+}
+
+#hud{
+  position:fixed;
+  top:15px;
+  left:15px;
+  color:white;
+  z-index:10;
+  font-size:18px;
+  text-shadow:2px 2px 3px #000;
+}
+
+.bar{
+  width:220px;
+  height:22px;
+  background:#333;
+  border:2px solid white;
+  margin-top:5px;
+}
+
+#health{
+  height:100%;
+  width:100%;
+  background:#18d64b;
+}
+
+#ammo{
+  margin-top:8px;
+}
+
+#zone{
+  margin-top:8px;
+  color:#65ff65;
+}
+
+#message{
+  position:fixed;
+  inset:0;
+  display:none;
+  align-items:center;
+  justify-content:center;
+  flex-direction:column;
+  color:white;
+  background:rgba(0,0,0,.7);
+  z-index:50;
+  text-align:center;
+}
+
+#message h1{
+  font-size:55px;
+  margin-bottom:20px;
+}
+
+button{
+  padding:15px 30px;
+  border:0;
+  border-radius:10px;
+  font-size:20px;
+  font-weight:bold;
+  cursor:pointer;
+}
+
+#fire{
+  position:fixed;
+  right:30px;
+  bottom:35px;
+  width:90px;
+  height:90px;
+  border-radius:50%;
+  background:#e22;
+  color:white;
+  border:4px solid white;
+  z-index:20;
+}
+
+#reload{
+  position:fixed;
+  right:140px;
+  bottom:45px;
+  background:#222;
+  color:white;
+  z-index:20;
+}
+
+#joystick{
+  position:fixed;
+  left:25px;
+  bottom:30px;
+  width:130px;
+  height:130px;
+  border-radius:50%;
+  background:rgba(255,255,255,.15);
+  border:2px solid rgba(255,255,255,.5);
+  z-index:20;
+}
+
+#stick{
+  position:absolute;
+  width:55px;
+  height:55px;
+  left:37px;
+  top:37px;
+  border-radius:50%;
+  background:rgba(255,255,255,.65);
+}
+
+#crosshair{
+  position:fixed;
+  left:50%;
+  top:50%;
+  transform:translate(-50%,-50%);
+  color:white;
+  font-size:30px;
+  z-index:15;
+  pointer-events:none;
+}
+
+#hint{
+  position:fixed;
+  bottom:10px;
+  left:50%;
+  transform:translateX(-50%);
+  color:white;
+  z-index:10;
+  font-size:13px;
+}
+</style>
+</head>
+
+<body>
+
+<div id="game"></div>
+
+<div id="hud">
+  ❤️ Health
+  <div class="bar">
+    <div id="health"></div>
+  </div>
+
+  <div id="ammo">🔫 Ammo: 30 / 120</div>
+  <div id="kills">☠️ Kills: 0</div>
+  <div id="zone">🟢 Safe Zone</div>
+</div>
+
+<div id="crosshair">+</div>
+
+<button id="reload">RELOAD</button>
+<button id="fire">FIRE</button>
+
+<div id="joystick">
+  <div id="stick"></div>
+</div>
+
+<div id="hint">
+  PC: WASD = Move | Mouse = Aim | Click = Shoot | R = Reload
+</div>
+
+<div id="message">
+  <h1 id="result">VICTORY!</h1>
+  <p id="resultText"></p>
+  <br>
+  <button onclick="location.reload()">PLAY AGAIN</button>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+
+<script>
+
+/* =========================
+   GAME SETUP
+========================= */
+
+const scene = new THREE.Scene();
+
+scene.background = new THREE.Color(0x78bde8);
+
+const camera = new THREE.PerspectiveCamera(
+  70,
+  innerWidth / innerHeight,
+  .1,
+  1000
+);
+
+const renderer = new THREE.WebGLRenderer({
+  antialias:true
+});
+
+renderer.setSize(innerWidth,innerHeight);
+renderer.shadowMap.enabled=true;
+
+document.getElementById("game").appendChild(renderer.domElement);
+
+
+/* =========================
+   LIGHT
+========================= */
+
+const sun = new THREE.DirectionalLight(0xffffff,1.5);
+sun.position.set(100,150,80);
+sun.castShadow=true;
+scene.add(sun);
+
+scene.add(new THREE.HemisphereLight(
+  0x87ceeb,
+  0x31572c,
+  1
+));
+
+
+/* =========================
+   ISLAND
+========================= */
+
+const groundGeometry =
+  new THREE.CylinderGeometry(100,100,3,64);
+
+const groundMaterial =
+  new THREE.MeshStandardMaterial({
+    color:0x3f8f42
+  });
+
+const ground =
+  new THREE.Mesh(
+    groundGeometry,
+    groundMaterial
+  );
+
+ground.position.y=-1.5;
+ground.receiveShadow=true;
+
+scene.add(ground);
+
+
+/* =========================
+   WATER
+========================= */
+
+const waterGeometry =
+  new THREE.CylinderGeometry(125,125,1,64);
+
+const waterMaterial =
+  new THREE.MeshStandardMaterial({
+    color:0x168ac0
+  });
+
+const water =
+  new THREE.Mesh(
+    waterGeometry,
+    waterMaterial
+  );
+
+water.position.y=-3;
+
+scene.add(water);
+
+
+/* =========================
+   PLAYER
+========================= */
+
+const player = new THREE.Group();
+
+const body =
+  new THREE.Mesh(
+    new THREE.CapsuleGeometry(1,2,8,16),
+    new THREE.MeshStandardMaterial({
+      color:0x2266ff
+    })
+  );
+
+body.position.y=2;
+body.castShadow=true;
+
+player.add(body);
+
+player.position.set(0,0,0);
+
+scene.add(player);
+
+
+/* =========================
+   PLAYER GUN
+========================= */
+
+const gun =
+  new THREE.Mesh(
+    new THREE.BoxGeometry(.3,.3,2),
+    new THREE.MeshStandardMaterial({
+      color:0x111111
+    })
+  );
+
+gun.position.set(.8,2,-1);
+
+player.add(gun);
+
+
+/* =========================
+   TREES
+========================= */
+
+function createTree(x,z){
+
+  const tree = new THREE.Group();
+
+  const trunk =
+    new THREE.Mesh(
+      new THREE.CylinderGeometry(.4,.5,4,8),
+      new THREE.MeshStandardMaterial({
+        color:0x704214
+      })
+    );
+
+  trunk.position.y=2;
+
+  tree.add(trunk);
+
+  const leaves =
+    new THREE.Mesh(
+      new THREE.SphereGeometry(2.5,12,12),
+      new THREE.MeshStandardMaterial({
+        color:0x176b2a
+      })
+    );
+
+  leaves.position.y=5;
+
+  tree.add(leaves);
+
+  tree.position.set(x,0,z);
+
+  scene.add(tree);
+}
+
+for(let i=0;i<35;i++){
+
+  let x=(Math.random()*170)-85;
+  let z=(Math.random()*170)-85;
+
+  if(Math.abs(x)<15 && Math.abs(z)<15) continue;
+
+  createTree(x,z);
+}
+
+
+/* =========================
+   ENEMIES
+========================= */
+
+let enemies=[];
+
+function createEnemy(){
+
+  const enemy=new THREE.Group();
+
+  const ebody =
+    new THREE.Mesh(
+      new THREE.CapsuleGeometry(1,2,8,16),
+      new THREE.MeshStandardMaterial({
+        color:0xff3030
+      })
+    );
+
+  ebody.position.y=2;
+  ebody.castShadow=true;
+
+  enemy.add(ebody);
+
+  enemy.position.set(
+    (Math.random()*150)-75,
+    0,
+    (Math.random()*150)-75
+  );
+
+  enemy.userData={
+    health:100,
+    speed:.035+Math.random()*.025
+  };
+
+  scene.add(enemy);
+  enemies.push(enemy);
+}
+
+for(let i=0;i<14;i++){
+  createEnemy();
+}
+
+
+/* =========================
+   SAFE ZONE
+========================= */
+
+let zoneRadius=90;
+
+const zoneGeometry =
+  new THREE.RingGeometry(
+    zoneRadius,
+    zoneRadius+.5,
+    64
+  );
+
+const zoneMaterial =
+  new THREE.MeshBasicMaterial({
+    color:0x00ff55,
+    side:THREE.DoubleSide
+  });
+
+const zone =
+  new THREE.Mesh(
+    zoneGeometry,
+    zoneMaterial
+  );
+
+zone.rotation.x=-Math.PI/2;
+zone.position.y=.15;
+
+scene.add(zone);
+
+
+/* =========================
+   GAME VARIABLES
+========================= */
+
+let health=100;
+let ammo=30;
+let reserveAmmo=120;
+let kills=0;
+
+let gameOver=false;
+
+const keys={};
+
+document.addEventListener("keydown",e=>{
+  keys[e.key.toLowerCase()]=true;
+
+  if(e.key.toLowerCase()==="r"){
+    reload();
+  }
+});
+
+document.addEventListener("keyup",e=>{
+  keys[e.key.toLowerCase()]=false;
+});
+
+
+/* =========================
+   SHOOTING
+========================= */
+
+function shoot(){
+
+  if(gameOver) return;
+
+  if(ammo<=0){
+    reload();
+    return;
+  }
+
+  ammo--;
+
+  updateHUD();
+
+  let closest=null;
+  let distance=Infinity;
+
+  enemies.forEach(enemy=>{
+
+    if(!enemy.visible) return;
+
+    const d=player.position.distanceTo(
+      enemy.position
+    );
+
+    if(d<distance && d<35){
+      distance=d;
+      closest=enemy;
+    }
+
+  });
+
+  if(closest){
+
+    closest.userData.health-=35;
+
+    if(closest.userData.health<=0){
+
+      closest.visible=false;
+
+      kills++;
+
+      updateHUD();
+
+      if(kills>=enemies.length){
+        victory();
+      }
+    }
+  }
+}
+
+
+/* =========================
+   RELOAD
+========================= */
+
+function reload(){
+
+  if(ammo>=30 || reserveAmmo<=0) return;
+
+  const needed=30-ammo;
+
+  const amount=Math.min(
+    needed,
+    reserveAmmo
+  );
+
+  ammo+=amount;
+  reserveAmmo-=amount;
+
+  updateHUD();
+}
+
+
+/* =========================
+   HUD
+========================= */
+
+function updateHUD(){
+
+  document.getElementById("ammo").textContent =
+    "🔫 Ammo: "+ammo+" / "+reserveAmmo;
+
+  document.getElementById("kills").textContent =
+    "☠️ Kills: "+kills;
+
+  document.getElementById("health").style.width =
+    Math.max(0,health)+"%";
+}
+
+
+/* =========================
+   ENEMY AI
+========================= */
+
+function enemyAI(){
+
+  enemies.forEach(enemy=>{
+
+    if(!enemy.visible) return;
+
+    const direction =
+      new THREE.Vector3()
+        .subVectors(
+          player.position,
+          enemy.position
+        );
+
+    const distance=direction.length();
+
+    direction.normalize();
+
+    if(distance<35){
+
+      enemy.position.add(
+        direction.multiplyScalar(
+          enemy.userData.speed
+        )
+      );
+
+      enemy.lookAt(
+        player.position.x,
+        2,
+        player.position.z
+      );
+
+      if(distance<4){
+
+        health-=.04;
+
+        updateHUD();
+
+        if(health<=0){
+          defeat();
+        }
+      }
+
+    }else{
+
+      enemy.rotation.y +=
+        (Math.random()-.5)*.01;
+
+    }
+
+  });
+}
+
+
+/* =========================
+   PLAYER MOVEMENT
+========================= */
+
+function movePlayer(){
+
+  const speed=.22;
+
+  let dx=0;
+  let dz=0;
+
+  if(keys["w"]) dz-=1;
+  if(keys["s"]) dz+=1;
+  if(keys["a"]) dx-=1;
+  if(keys["d"]) dx+=1;
+
+  if(dx!==0 || dz!==0){
+
+    const length=Math.sqrt(
+      dx*dx+dz*dz
+    );
+
+    dx/=length;
+    dz/=length;
+
+    player.position.x+=dx*speed;
+    player.position.z+=dz*speed;
+
+    player.rotation.y=
+      Math.atan2(dx,dz);
+
+  }
+
+  player.position.x=
+    THREE.MathUtils.clamp(
+      player.position.x,
+      -95,
+      95
+    );
+
+  player.position.z=
+    THREE.MathUtils.clamp(
+      player.position.z,
+      -95,
+      95
+    );
+}
+
+
+/* =========================
+   CAMERA
+========================= */
+
+function updateCamera(){
+
+  const offset=
+    new THREE.Vector3(
+      0,
+      9,
+      13
+    );
+
+  offset.applyAxisAngle(
+    new THREE.Vector3(0,1,0),
+    player.rotation.y
+  );
+
+  camera.position.lerp(
+    player.position.clone().add(offset),
+    .08
+  );
+
+  camera.lookAt(
+    player.position.x,
+    2,
+    player.position.z
+  );
+}
+
+
+/* =========================
+   SAFE ZONE
+========================= */
+
+function updateZone(){
+
+  if(zoneRadius>20){
+    zoneRadius-=.003;
+
+    zone.scale.set(
+      zoneRadius/90,
+      zoneRadius/90,
+      1
+    );
+  }
+
+  const distance=Math.sqrt(
+    player.position.x*
+    player.position.x+
+    player.position.z*
+    player.position.z
+  );
+
+  if(distance>zoneRadius){
+
+    health-=.03;
+
+    document.getElementById(
+      "zone"
+    ).textContent="⚠️ OUTSIDE SAFE ZONE!";
+
+    updateHUD();
+
+    if(health<=0){
+      defeat();
+    }
+
+  }else{
+
+    document.getElementById(
+      "zone"
+    ).textContent="🟢 Safe Zone";
+
+  }
+}
+
+
+/* =========================
+   GAME RESULT
+========================= */
+
+function victory(){
+
+  gameOver=true;
+
+  document.getElementById(
+    "message"
+  ).style.display="flex";
+
+  document.getElementById(
+    "result"
+  ).textContent="🏆 VICTORY!";
+
+  document.getElementById(
+    "resultText"
+  ).textContent=
+    "You eliminated all enemies! Kills: "+kills;
+}
+
+function defeat(){
+
+  gameOver=true;
+
+  document.getElementById(
+    "message"
+  ).style.display="flex";
+
+  document.getElementById(
+    "result"
+  ).textContent="💀 GAME OVER";
+
+  document.getElementById(
+    "resultText"
+  ).textContent=
+    "Kills: "+kills;
+}
+
+
+/* =========================
+   FIRE BUTTON
+========================= */
+
+document.getElementById(
+  "fire"
+).addEventListener(
+  "touchstart",
+  e=>{
+    e.preventDefault();
+    shoot();
+  }
+);
+
+document.getElementById(
+  "fire"
+).addEventListener(
+  "click",
+  shoot
+);
+
+document.getElementById(
+  "reload"
+).addEventListener(
+  "click",
+  reload
+);
+
+
+/* =========================
+   MOUSE SHOOT
+========================= */
+
+document.addEventListener(
+  "mousedown",
+  e=>{
+
+    if(e.target.tagName!=="BUTTON"){
+      shoot();
+    }
+
+  }
+);
+
+
+/* =========================
+   MOBILE JOYSTICK
+========================= */
+
+let joystickActive=false;
+
+const joystick=
+  document.getElementById("joystick");
+
+const stick=
+  document.getElementById("stick");
+
+joystick.addEventListener(
+  "touchstart",
+  e=>{
+    joystickActive=true;
+  }
+);
+
+joystick.addEventListener(
+  "touchmove",
+  e=>{
+
+    if(!joystickActive) return;
+
+    const touch=e.touches[0];
+
+    const rect=
+      joystick.getBoundingClientRect();
+
+    let x=
+      touch.clientX-
+      (rect.left+rect.width/2);
+
+    let y=
+      touch.clientY-
+      (rect.top+rect.height/2);
+
+    const max=45;
+
+    x=Math.max(-max,Math.min(max,x));
+    y=Math.max(-max,Math.min(max,y));
+
+    stick.style.transform=
+      `translate(${x}px,${y}px)`;
+
+    keys["w"]=y<-10;
+    keys["s"]=y>10;
+    keys["a"]=x<-10;
+    keys["d"]=x>10;
+
+  }
+);
+
+joystick.addEventListener(
+  "touchend",
+  e=>{
+
+    joystickActive=false;
+
+    stick.style.transform=
+      "translate(0,0)";
+
+    keys["w"]=false;
+    keys["s"]=false;
+    keys["a"]=false;
+    keys["d"]=false;
+
+  }
+);
+
+
+/* =========================
+   RESIZE
+========================= */
+
+window.addEventListener(
+  "resize",
+  ()=>{
+
+    camera.aspect=
+      innerWidth/innerHeight;
+
+    camera.updateProjectionMatrix();
+
+    renderer.setSize(
+      innerWidth,
+      innerHeight
+    );
+
+  }
+);
+
+
+/* =========================
+   GAME LOOP
+========================= */
+
+function animate(){
+
+  requestAnimationFrame(animate);
+
+  if(!gameOver){
+
+    movePlayer();
+
+    enemyAI();
+
+    updateZone();
+
+    updateCamera();
+
+  }
+
+  renderer.render(
+    scene,
+    camera
+  );
+}
+
+updateHUD();
+
+animate();
+
+</script>
+
+</body>
+  </html>
